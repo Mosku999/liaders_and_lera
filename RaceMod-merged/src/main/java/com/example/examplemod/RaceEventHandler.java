@@ -209,4 +209,48 @@ public class RaceEventHandler {
             player.getFoodData().eat(food.getNutrition(), food.getSaturationModifier());
         }
     }
+
+    @SubscribeEvent
+    public static void onStartEating(LivingEntityUseItemEvent.Start event) {
+        if (!(event.getEntity() instanceof Player player)) return;
+
+        // Получаем текущую расу игрока (вам нужно будет написать этот метод-хелпер)
+        String raceId = player.getPersistentData().getString("race_id");
+        Race race = getRace(raceId);
+
+        if (race == null || !race.canOnlyEatMeat()) return;
+
+        ItemStack item = event.getItem();
+
+        // Если это не мясо — отменяем поедание
+        if (!isMeat(item)) {
+            event.setCanceled(true);
+            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("Эта раса может есть только мясо!"));
+        }
+    }
+
+    // 2. УБИРАЕМ ЭФФЕКТ ГОЛОДА ПОСЛЕ ГНИЛОЙ ПЛОТИ
+    @SubscribeEvent
+    public static void onFinishEating(LivingEntityUseItemEvent.Finish event) {
+        if (!(event.getEntity() instanceof Player player)) return;
+
+        String raceId = player.getPersistentData().getString("race_id");
+        Race race = getRace(raceId);
+        if (race == null || !race.isImmuneToHunger()) return;
+
+        // Если игрок съел гнилую плоть — убираем эффект голода
+        if (event.getItem().is(Items.ROTTEN_FLESH)) {
+            player.removeEffect(MobEffects.HUNGER);
+        }
+    }
+
+    // Вспомогательный метод: проверяем, мясо ли это
+    private static boolean isMeat(ItemStack stack) {
+        return stack.is(Items.ROTTEN_FLESH) || stack.is(Items.BEEF) || stack.is(Items.COOKED_BEEF) ||
+                stack.is(Items.PORKCHOP) || stack.is(Items.COOKED_PORKCHOP) ||
+                stack.is(Items.CHICKEN) || stack.is(Items.COOKED_CHICKEN) ||
+                stack.is(Items.MUTTON) || stack.is(Items.COOKED_MUTTON) ||
+                stack.is(Items.RABBIT) || stack.is(Items.COOKED_RABBIT) ||
+                stack.is(Items.COD) || stack.is(Items.SALMON); // Рыбу тоже можно добавить
+    }
 }

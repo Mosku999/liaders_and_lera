@@ -15,7 +15,7 @@ public class Zombi implements Race {
     // Зомби копает в 0.07 раза от обычной скорости.
     @Override
     public float getMiningSpeedMultiplier() {
-        return 0.07F;
+        return 0.7F;
     }
 
     // Скорость ходьбы на 30% ниже обычной.
@@ -23,5 +23,15 @@ public class Zombi implements Race {
     @Override
     public double getMovementSpeedMultiplier() {
         return -0.30D;
+    }
+
+    @Override
+    public boolean canOnlyEatMeat() {
+        return true; // Зомби может есть только мясо
+    }
+
+    @Override
+    public boolean isImmuneToHunger() {
+        return true; // Зомби не получает голод от гнилой плоти
     }
 }
