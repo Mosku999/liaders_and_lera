@@ -16,6 +16,9 @@ import net.minecraftforge.event.entity.living.LivingEntityUseItemEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraft.world.entity.monster.Zombie;
+import net.minecraft.world.entity.MobCategory;
+import net.minecraftforge.event.entity.living.LivingChangeTargetEvent;
 
 import java.util.UUID;
 
@@ -113,6 +116,16 @@ public class RaceEventHandler {
                     ItemStack dropped = armor.copy();
                     player.getInventory().armor.set(i, ItemStack.EMPTY);
                     player.drop(dropped, true);
+                }
+            }
+        }
+        // ЛОГИКА ГОРЕНИЯ НА СОЛНЦЕ
+        if (race.burnsInSunlight()) {
+            // Проверяем, что сейчас день, игрок на улице и не в воде
+            if (player.level().isDay() && player.level().canSeeSky(player.blockPosition()) && !player.isInWater()) {
+                // Поджигаем игрока на 5 секунд (100 тиков), если он еще не горит
+                if (player.getRemainingFireTicks() <= 0) {
+                    player.setSecondsOnFire(5);
                 }
             }
         }
@@ -252,5 +265,21 @@ public class RaceEventHandler {
                 stack.is(Items.MUTTON) || stack.is(Items.COOKED_MUTTON) ||
                 stack.is(Items.RABBIT) || stack.is(Items.COOKED_RABBIT) ||
                 stack.is(Items.COD) || stack.is(Items.SALMON); // Рыбу тоже можно добавить
+    }
+    @SubscribeEvent
+    public static void onZombieTarget(LivingChangeTargetEvent event) {
+        // Проверяем, что цель — игрок
+        if (!(event.getNewTarget() instanceof Player player)) return;
+
+        // Проверяем, что тот, кто выбирает цель — это зомби (или любой монстр)
+        // Можно проверять только зомби: if (!(event.getEntity() instanceof Zombie)) return;
+        if (event.getEntity().getType().getCategory() != MobCategory.MONSTER) return;
+
+        // Проверяем, является ли игрок зомби
+        String raceId = player.getPersistentData().getString("race_id");
+        if ("zombi".equals(raceId)) {
+            // Отменяем событие — моб не сможет атаковать этого игрока
+            event.setCanceled(true);
+        }
     }
 }

@@ -34,4 +34,13 @@ public class Zombi implements Race {
     public boolean isImmuneToHunger() {
         return true; // Зомби не получает голод от гнилой плоти
     }
+    @Override
+    public boolean burnsInSunlight() {
+        return true; // Зомби горит на солнце
+    }
+
+    @Override
+    public double getMaxHealthBonus() {
+        return 10.0D; // Добавляем 5 сердец (10 единиц здоровья)
+    }
 }

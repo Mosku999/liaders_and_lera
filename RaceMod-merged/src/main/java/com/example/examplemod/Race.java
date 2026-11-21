@@ -28,6 +28,11 @@ public interface Race {
         return false;
     }
 
+    /** Горит ли раса на солнце? */
+    default boolean burnsInSunlight() {
+        return false;
+    }
+
     /** Прибавка к максимальному здоровью. Для 5 сердечек используется -10. */
     default double getMaxHealthBonus() {
         return 0.0D;
