@@ -27,10 +27,24 @@ public class RaceCommand {
                         context.getSource().getPlayerOrException(), "catboy", "Кошкомальчик"
                 ))
         );
+
+        // Обе команды работают: /zombi и /zombie
+        dispatcher.register(Commands.literal("zombi")
+                .executes(context -> setRace(
+                        context.getSource().getPlayerOrException(), "zombi", "Зомби"
+                ))
+        );
+
+        dispatcher.register(Commands.literal("zombie")
+                .executes(context -> setRace(
+                        context.getSource().getPlayerOrException(), "zombi", "Зомби"
+                ))
+        );
     }
 
     private static int setRace(Player player, String id, String name) {
         player.getPersistentData().putString("race_id", id);
+        // Пустое значение заставляет обработчик применить способности новой расы.
         player.getPersistentData().putString("race_applied", "");
         player.getPersistentData().putInt("race_timer", 0);
         player.sendSystemMessage(Component.literal(

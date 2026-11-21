@@ -32,16 +32,27 @@ public class RaceEventHandler {
 
     private static final Race GNOME = new GnomeRace();
     private static final Race CATBOY = new CatboyRace();
+    private static final Race ZOMBI = new Zombi();
 
     private static Race getRace(String id) {
         if ("catboy".equals(id)) {
             return CATBOY;
         }
+        if ("zombi".equals(id)) {
+            return ZOMBI;
+        }
         return GNOME;
     }
 
+    // Порядок автоматической смены: Гном -> Кошкомальчик -> Зомби -> Гном.
     private static String nextRaceId(String currentId) {
-        return "gnome".equals(currentId) ? "catboy" : "gnome";
+        if ("gnome".equals(currentId)) {
+            return "catboy";
+        }
+        if ("catboy".equals(currentId)) {
+            return "zombi";
+        }
+        return "gnome";
     }
 
     @SubscribeEvent
@@ -195,7 +206,6 @@ public class RaceEventHandler {
 
         FoodProperties food = item.getItem().getFoodProperties(item, player);
         if (food != null) {
-            // Рыба уже восстановила голод один раз; добавляем ещё одну такую же порцию.
             player.getFoodData().eat(food.getNutrition(), food.getSaturationModifier());
         }
     }
