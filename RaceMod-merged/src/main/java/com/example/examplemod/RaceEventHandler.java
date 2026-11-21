@@ -1,5 +1,6 @@
 package com.example.examplemod;
 
+import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
@@ -47,6 +48,7 @@ public class RaceEventHandler {
         return GNOME;
     }
 
+
     // Порядок автоматической смены: Гном -> Кошкомальчик -> Зомби -> Гном.
     private static String nextRaceId(String currentId) {
         if ("gnome".equals(currentId)) {
@@ -91,6 +93,26 @@ public class RaceEventHandler {
         data.putInt("race_timer", timer);
 
         Race race = getRace(data.getString("race_id"));
+        // Усиленный прыжок кошкомальчика
+        if (race.getId().equals("catboy")) {
+            MobEffectInstance jump = player.getEffect(MobEffects.JUMP);
+
+            if (jump == null || (jump.getAmplifier() == 0 && jump.getDuration() < 100)) {
+                player.addEffect(new MobEffectInstance(
+                        MobEffects.JUMP,
+                        220,
+                        0,
+                        true,
+                        false,
+                        false
+                ));
+            }
+        }
+
+// Убираем наш эффект при смене расы
+        else if (data.getString("race_applied").equals("catboy")) {
+            player.removeEffect(MobEffects.JUMP);
+        }
         applyRaceAttributes(player, race);
 
         // Ночное зрение поддерживается, пока активен Кошкомальчик.
@@ -281,5 +303,6 @@ public class RaceEventHandler {
             // Отменяем событие — моб не сможет атаковать этого игрока
             event.setCanceled(true);
         }
+
     }
 }
