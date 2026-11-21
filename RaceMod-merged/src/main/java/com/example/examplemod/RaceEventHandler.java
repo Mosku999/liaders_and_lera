@@ -16,6 +16,9 @@ import net.minecraftforge.event.entity.living.LivingEntityUseItemEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraft.world.entity.monster.Zombie;
+import net.minecraft.world.entity.MobCategory;
+import net.minecraftforge.event.entity.living.LivingChangeTargetEvent;
 
 import java.util.UUID;
 
@@ -116,6 +119,16 @@ public class RaceEventHandler {
                 }
             }
         }
+        // ЛОГИКА ГОРЕНИЯ НА СОЛНЦЕ
+        if (race.burnsInSunlight()) {
+            // Проверяем, что сейчас день, игрок на улице и не в воде
+            if (player.level().isDay() && player.level().canSeeSky(player.blockPosition()) && !player.isInWater()) {
+                // Поджигаем игрока на 5 секунд (100 тиков), если он еще не горит
+                if (player.getRemainingFireTicks() <= 0) {
+                    player.setSecondsOnFire(5);
+                }
+            }
+        }
     }
 
     private static void applyRaceAttributes(Player player, Race race) {
@@ -207,6 +220,66 @@ public class RaceEventHandler {
         FoodProperties food = item.getItem().getFoodProperties(item, player);
         if (food != null) {
             player.getFoodData().eat(food.getNutrition(), food.getSaturationModifier());
+        }
+    }
+
+    @SubscribeEvent
+    public static void onStartEating(LivingEntityUseItemEvent.Start event) {
+        if (!(event.getEntity() instanceof Player player)) return;
+
+        // Получаем текущую расу игрока (вам нужно будет написать этот метод-хелпер)
+        String raceId = player.getPersistentData().getString("race_id");
+        Race race = getRace(raceId);
+
+        if (race == null || !race.canOnlyEatMeat()) return;
+
+        ItemStack item = event.getItem();
+
+        // Если это не мясо — отменяем поедание
+        if (!isMeat(item)) {
+            event.setCanceled(true);
+            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("Эта раса может есть только мясо!"));
+        }
+    }
+
+    // 2. УБИРАЕМ ЭФФЕКТ ГОЛОДА ПОСЛЕ ГНИЛОЙ ПЛОТИ
+    @SubscribeEvent
+    public static void onFinishEating(LivingEntityUseItemEvent.Finish event) {
+        if (!(event.getEntity() instanceof Player player)) return;
+
+        String raceId = player.getPersistentData().getString("race_id");
+        Race race = getRace(raceId);
+        if (race == null || !race.isImmuneToHunger()) return;
+
+        // Если игрок съел гнилую плоть — убираем эффект голода
+        if (event.getItem().is(Items.ROTTEN_FLESH)) {
+            player.removeEffect(MobEffects.HUNGER);
+        }
+    }
+
+    // Вспомогательный метод: проверяем, мясо ли это
+    private static boolean isMeat(ItemStack stack) {
+        return stack.is(Items.ROTTEN_FLESH) || stack.is(Items.BEEF) || stack.is(Items.COOKED_BEEF) ||
+                stack.is(Items.PORKCHOP) || stack.is(Items.COOKED_PORKCHOP) ||
+                stack.is(Items.CHICKEN) || stack.is(Items.COOKED_CHICKEN) ||
+                stack.is(Items.MUTTON) || stack.is(Items.COOKED_MUTTON) ||
+                stack.is(Items.RABBIT) || stack.is(Items.COOKED_RABBIT) ||
+                stack.is(Items.COD) || stack.is(Items.SALMON); // Рыбу тоже можно добавить
+    }
+    @SubscribeEvent
+    public static void onZombieTarget(LivingChangeTargetEvent event) {
+        // Проверяем, что цель — игрок
+        if (!(event.getNewTarget() instanceof Player player)) return;
+
+        // Проверяем, что тот, кто выбирает цель — это зомби (или любой монстр)
+        // Можно проверять только зомби: if (!(event.getEntity() instanceof Zombie)) return;
+        if (event.getEntity().getType().getCategory() != MobCategory.MONSTER) return;
+
+        // Проверяем, является ли игрок зомби
+        String raceId = player.getPersistentData().getString("race_id");
+        if ("zombi".equals(raceId)) {
+            // Отменяем событие — моб не сможет атаковать этого игрока
+            event.setCanceled(true);
         }
     }
 }
