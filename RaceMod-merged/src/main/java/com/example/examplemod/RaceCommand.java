@@ -1,3 +1,4 @@
+
 package com.example.examplemod;
 
 import com.mojang.brigadier.CommandDispatcher;
@@ -28,7 +29,6 @@ public class RaceCommand {
                 ))
         );
 
-        // Обе команды работают: /zombi и /zombie
         dispatcher.register(Commands.literal("zombi")
                 .executes(context -> setRace(
                         context.getSource().getPlayerOrException(), "zombi", "Зомби"
@@ -40,16 +40,25 @@ public class RaceCommand {
                         context.getSource().getPlayerOrException(), "zombi", "Зомби"
                 ))
         );
+
+        dispatcher.register(Commands.literal("fat")
+                .executes(context -> setRace(
+                        context.getSource().getPlayerOrException(), "fat", "Жиробас"
+                ))
+        );
     }
 
     private static int setRace(Player player, String id, String name) {
         player.getPersistentData().putString("race_id", id);
-        // Пустое значение заставляет обработчик применить способности новой расы.
         player.getPersistentData().putString("race_applied", "");
         player.getPersistentData().putInt("race_timer", 0);
+        player.getPersistentData().putBoolean("fat_was_on_ground", true);
+
         player.sendSystemMessage(Component.literal(
-                "Вы выбрали класс: " + name + ". Автоматическая смена через 30 секунд."
+                "Вы выбрали класс: " + name +
+                        ". Автоматическая смена через 30 секунд."
         ));
+
         return 1;
     }
 }
