@@ -16,12 +16,6 @@ public class RaceCommand {
     public static void onRegisterCommands(RegisterCommandsEvent event) {
         CommandDispatcher<CommandSourceStack> dispatcher = event.getDispatcher();
 
-        dispatcher.register(Commands.literal("gnome")
-                .executes(context -> setRace(
-                        context.getSource().getPlayerOrException(), "gnome", "Гном"
-                ))
-        );
-
         dispatcher.register(Commands.literal("catboy")
                 .executes(context -> setRace(
                         context.getSource().getPlayerOrException(), "catboy", "Кошкомальчик"
@@ -38,6 +32,12 @@ public class RaceCommand {
         dispatcher.register(Commands.literal("zombie")
                 .executes(context -> setRace(
                         context.getSource().getPlayerOrException(), "zombi", "Зомби"
+                ))
+        );
+
+        dispatcher.register(Commands.literal("dragonkin")
+                .executes(context -> setRace(
+                        context.getSource().getPlayerOrException(), "dragonkin", "Драконорожденный"
                 ))
         );
     }

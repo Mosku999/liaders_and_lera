@@ -1,63 +1,89 @@
 package com.example.examplemod;
 
-import net.minecraftforge.event.entity.living.LivingEvent;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.food.FoodProperties;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.BaseFireBlock;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.event.entity.living.LivingFallEvent;
-import net.minecraftforge.event.entity.living.LivingEntityUseItemEvent;
+import net.minecraftforge.event.entity.living.*;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraft.world.entity.monster.Zombie;
-import net.minecraft.world.entity.MobCategory;
-import net.minecraftforge.event.entity.living.LivingChangeTargetEvent;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
 import java.util.UUID;
 
 @Mod.EventBusSubscriber(modid = ExampleMod.MODID)
 public class RaceEventHandler {
-    // 20 игровых тиков = 1 секунда. 600 тиков = 30 секунд.
-    // Для 10 минут поменяйте 600 на 12000.
-    public static final int SWITCH_INTERVAL_TICKS = 600;
+    // 20 игровых тиков = 1 секунда. 12 000 тиков = 10 минут (20 * 60 * 10).
+    public static final int SWITCH_INTERVAL_TICKS = 40;
+
+    private static final List<String> ALL_RACE_IDS = List.of("catboy", "zombi", "dragonkin");
+    private static final Random RANDOM = new Random();
 
     private static final UUID RACE_SPEED_ID =
             UUID.fromString("6a2f5a10-8c7d-4b12-9a01-111111111111");
     private static final UUID RACE_HEALTH_ID =
             UUID.fromString("6a2f5a10-8c7d-4b12-9a01-222222222222");
 
-    private static final Race GNOME = new GnomeRace();
     private static final Race CATBOY = new CatboyRace();
     private static final Race ZOMBI = new Zombi();
+    private static final Race DRAGONKIN = new DragonkinRace();
+
+    // --- DragonBlood поля ---
+    private static final Map<UUID, Float> accumulatedDamage = new HashMap<>();
+    private static final Map<UUID, Long> eruptionTimers = new HashMap<>();
+    private static final List<LavaTask> LAVA_TASKS = new ArrayList<>();
+    private static final float DAMAGE_THRESHOLD = 6.0f; // 3 сердца
+
+    // --- DragonFireBurp поля ---
+    private static final int BURP_COOLDOWN_TICKS = 600;
+    private static final int WARNING_BEFORE_TICKS = 40;
+    private static final Map<UUID, Integer> fireBurpTicks = new HashMap<>();
 
     private static Race getRace(String id) {
-        if ("catboy".equals(id)) {
-            return CATBOY;
-        }
         if ("zombi".equals(id)) {
             return ZOMBI;
         }
-        return GNOME;
+        if ("dragonkin".equals(id)) {
+            return DRAGONKIN;
+        }
+        return CATBOY;
     }
 
-
-    // Порядок автоматической смены: Гном -> Кошкомальчик -> Зомби -> Гном.
+    // Случайный выбор следующего класса (не повторяя текущий).
     private static String nextRaceId(String currentId) {
-        if ("gnome".equals(currentId)) {
-            return "catboy";
+        List<String> candidates = new ArrayList<>();
+        for (String id : ALL_RACE_IDS) {
+            if (!id.equals(currentId)) {
+                candidates.add(id);
+            }
         }
-        if ("catboy".equals(currentId)) {
-            return "zombi";
+        if (candidates.isEmpty()) {
+            return ALL_RACE_IDS.get(RANDOM.nextInt(ALL_RACE_IDS.size()));
         }
-        return "gnome";
+        return candidates.get(RANDOM.nextInt(candidates.size()));
     }
 
     @SubscribeEvent
@@ -69,24 +95,34 @@ public class RaceEventHandler {
 
         CompoundTag data = player.getPersistentData();
 
-        // При первом появлении игрок начинает за Гнома.
+        // При первом появлении игрок получает случайный класс.
         if (!data.contains("race_id")) {
-            data.putString("race_id", "gnome");
+            String firstId = ALL_RACE_IDS.get(RANDOM.nextInt(ALL_RACE_IDS.size()));
+            Race firstRace = getRace(firstId);
+            data.putString("race_id", firstId);
             data.putString("race_applied", "");
             data.putInt("race_timer", 0);
-            player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-                    "Ваш первый класс: Гном. Класс меняется каждые 30 секунд."
+            player.sendSystemMessage(Component.literal(
+                    "Ваш первый класс: " + firstRace.getName() + ". Класс меняется каждые 10 минут."
             ));
         }
 
         int timer = data.getInt("race_timer") + 1;
         if (timer >= SWITCH_INTERVAL_TICKS) {
-            String nextId = nextRaceId(data.getString("race_id"));
+            String previousId = data.getString("race_id");
+            String nextId = nextRaceId(previousId);
             data.putString("race_id", nextId);
             timer = 0;
 
+            if ("dragonkin".equals(previousId) && !"dragonkin".equals(nextId)) {
+                fireBurpTicks.remove(player.getUUID());
+                player.getAbilities().flying = false;
+                player.getAbilities().mayfly = false;
+                player.onUpdateAbilities();
+            }
+
             Race nextRace = getRace(nextId);
-            player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+            player.sendSystemMessage(Component.literal(
                     "Новый класс: " + nextRace.getName()
             ));
         }
@@ -108,8 +144,7 @@ public class RaceEventHandler {
                 ));
             }
         }
-
-// Убираем наш эффект при смене расы
+        // Убираем наш эффект при смене расы
         else if (data.getString("race_applied").equals("catboy")) {
             player.removeEffect(MobEffects.JUMP);
         }
@@ -143,13 +178,32 @@ public class RaceEventHandler {
         }
         // ЛОГИКА ГОРЕНИЯ НА СОЛНЦЕ
         if (race.burnsInSunlight()) {
-            // Проверяем, что сейчас день, игрок на улице и не в воде
             if (player.level().isDay() && player.level().canSeeSky(player.blockPosition()) && !player.isInWater()) {
-                // Поджигаем игрока на 5 секунд (100 тиков), если он еще не горит
                 if (player.getRemainingFireTicks() <= 0) {
                     player.setSecondsOnFire(5);
                 }
             }
+        }
+
+        // ==========================================
+        // DRAGONFIREBURP: ОТРЫЖКА ПЛАМЕНЕМ
+        // ==========================================
+        if (race.getId().equals("dragonkin")) {
+            if (player.isCreative() || player.isSpectator()) return;
+
+            UUID uuid = player.getUUID();
+            int burpTicks = fireBurpTicks.getOrDefault(uuid, 0) + 1;
+
+            if (burpTicks == (BURP_COOLDOWN_TICKS - WARNING_BEFORE_TICKS)) {
+                player.sendSystemMessage(Component.literal("В горле разгорается пламя... Отрыжка через 2 секунды!"));
+            }
+
+            if (burpTicks >= BURP_COOLDOWN_TICKS) {
+                burpTicks = 0;
+                executeFireBurp(player);
+            }
+
+            fireBurpTicks.put(uuid, burpTicks);
         }
     }
 
@@ -162,9 +216,9 @@ public class RaceEventHandler {
 
         boolean needsUpdate = !race.getId().equals(previousRace)
                 || (speed != null && race.getMovementSpeedMultiplier() != 0.0D
-                    && speed.getModifier(RACE_SPEED_ID) == null)
+                && speed.getModifier(RACE_SPEED_ID) == null)
                 || (health != null && race.getMaxHealthBonus() != 0.0D
-                    && health.getModifier(RACE_HEALTH_ID) == null);
+                && health.getModifier(RACE_HEALTH_ID) == null);
 
         if (!needsUpdate) return;
 
@@ -205,6 +259,11 @@ public class RaceEventHandler {
         Player player = event.getEntity();
         Race race = getRace(player.getPersistentData().getString("race_id"));
         float multiplier = race.getMiningSpeedMultiplier();
+
+        // Замедление копания для дракона (из DragonkinSlowness)
+        if ("dragonkin".equals(race.getId())) {
+            multiplier *= 0.65f;
+        }
 
         if (multiplier != 1.0F) {
             event.setNewSpeed(event.getOriginalSpeed() * multiplier);
@@ -249,7 +308,6 @@ public class RaceEventHandler {
     public static void onStartEating(LivingEntityUseItemEvent.Start event) {
         if (!(event.getEntity() instanceof Player player)) return;
 
-        // Получаем текущую расу игрока (вам нужно будет написать этот метод-хелпер)
         String raceId = player.getPersistentData().getString("race_id");
         Race race = getRace(raceId);
 
@@ -257,14 +315,12 @@ public class RaceEventHandler {
 
         ItemStack item = event.getItem();
 
-        // Если это не мясо — отменяем поедание
         if (!isMeat(item)) {
             event.setCanceled(true);
-            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("Эта раса может есть только мясо!"));
+            player.sendSystemMessage(Component.literal("Эта раса может есть только мясо!"));
         }
     }
 
-    // 2. УБИРАЕМ ЭФФЕКТ ГОЛОДА ПОСЛЕ ГНИЛОЙ ПЛОТИ
     @SubscribeEvent
     public static void onFinishEating(LivingEntityUseItemEvent.Finish event) {
         if (!(event.getEntity() instanceof Player player)) return;
@@ -273,36 +329,221 @@ public class RaceEventHandler {
         Race race = getRace(raceId);
         if (race == null || !race.isImmuneToHunger()) return;
 
-        // Если игрок съел гнилую плоть — убираем эффект голода
         if (event.getItem().is(Items.ROTTEN_FLESH)) {
             player.removeEffect(MobEffects.HUNGER);
         }
     }
 
-    // Вспомогательный метод: проверяем, мясо ли это
     private static boolean isMeat(ItemStack stack) {
         return stack.is(Items.ROTTEN_FLESH) || stack.is(Items.BEEF) || stack.is(Items.COOKED_BEEF) ||
                 stack.is(Items.PORKCHOP) || stack.is(Items.COOKED_PORKCHOP) ||
                 stack.is(Items.CHICKEN) || stack.is(Items.COOKED_CHICKEN) ||
                 stack.is(Items.MUTTON) || stack.is(Items.COOKED_MUTTON) ||
                 stack.is(Items.RABBIT) || stack.is(Items.COOKED_RABBIT) ||
-                stack.is(Items.COD) || stack.is(Items.SALMON); // Рыбу тоже можно добавить
+                stack.is(Items.COD) || stack.is(Items.SALMON);
     }
+
     @SubscribeEvent
     public static void onZombieTarget(LivingChangeTargetEvent event) {
-        // Проверяем, что цель — игрок
         if (!(event.getNewTarget() instanceof Player player)) return;
-
-        // Проверяем, что тот, кто выбирает цель — это зомби (или любой монстр)
-        // Можно проверять только зомби: if (!(event.getEntity() instanceof Zombie)) return;
         if (event.getEntity().getType().getCategory() != MobCategory.MONSTER) return;
 
-        // Проверяем, является ли игрок зомби
         String raceId = player.getPersistentData().getString("race_id");
         if ("zombi".equals(raceId)) {
-            // Отменяем событие — моб не сможет атаковать этого игрока
             event.setCanceled(true);
         }
+    }
 
+    // ==========================================
+    // ЛОГИКА УРОНА ДЛЯ ДРАКОНОРОЖДЕННОГО
+    // ==========================================
+    @SubscribeEvent
+    public static void onLivingHurt(LivingHurtEvent event) {
+        // 1. УМЕНЬШЕНИЕ ВХОДЯЩЕГО УРОНА (защита)
+        if (event.getEntity() instanceof Player player) {
+            String raceId = player.getPersistentData().getString("race_id");
+            if ("dragonkin".equals(raceId)) {
+                float originalDamage = event.getAmount();
+                event.setAmount(originalDamage * 0.8f);
+            }
+        }
+
+        // 2. УВЕЛИЧЕНИЕ ИСХОДЯЩЕГО УРОНА (атака)
+        if (event.getSource().getEntity() instanceof Player player) {
+            String raceId = player.getPersistentData().getString("race_id");
+            if ("dragonkin".equals(raceId)) {
+                float originalDamage = event.getAmount();
+                event.setAmount(originalDamage * 1.2f);
+            }
+        }
+
+        // --- DragonBlood: накопление урона при получении урона драконом ---
+        if (event.getEntity() instanceof Player player) {
+            String raceId = player.getPersistentData().getString("race_id");
+            if (!"dragonkin".equals(raceId)) return;
+            if (player.level().isClientSide()) return;
+
+            UUID playerUUID = player.getUUID();
+
+            if (eruptionTimers.containsKey(playerUUID)) {
+                return;
+            }
+
+            float currentDamage = event.getAmount();
+            float totalDamage = accumulatedDamage.getOrDefault(playerUUID, 0.0f) + currentDamage;
+
+            if (totalDamage >= DAMAGE_THRESHOLD) {
+                accumulatedDamage.put(playerUUID, 0.0f);
+                eruptionTimers.put(playerUUID, System.currentTimeMillis() + 2000);
+                player.sendSystemMessage(Component.literal("§c!Твоя кровь закипает! Лава вырвется через 2 секунды!"));
+            } else {
+                accumulatedDamage.put(playerUUID, totalDamage);
+            }
+        }
+    }
+
+    // ==========================================
+    // FIREIMMUNITY: ИММУНИТЕТ К ОГНЮ (СЕРВЕР)
+    // ==========================================
+    @SubscribeEvent
+    public static void onLivingAttack(LivingAttackEvent event) {
+        if (!(event.getEntity() instanceof Player player)) {
+            return;
+        }
+        // Проверяем, что игрок — дракон
+        String raceId = player.getPersistentData().getString("race_id");
+        if (!"dragonkin".equals(raceId)) {
+            return;
+        }
+        // Блокируем урон от огня и лавы
+        if (event.getSource().is(DamageTypeTags.IS_FIRE)) {
+            event.setCanceled(true);
+        }
+    }
+
+    // ==========================================
+    // DRAGONBLOOD + DRAGONKINHUNGER: ТИК ИГРОКА
+    // ==========================================
+    @SubscribeEvent
+    public static void onDragonBloodTick(LivingEvent.LivingTickEvent event) {
+        if (!(event.getEntity() instanceof Player player) || player.level().isClientSide()) {
+            return;
+        }
+
+        UUID playerUUID = player.getUUID();
+        String raceId = player.getPersistentData().getString("race_id");
+
+        // --- DragonkinHunger: усиленный голод для дракона ---
+        if ("dragonkin".equals(raceId)) {
+            if (!player.isCreative() && !player.isSpectator()) {
+                if (player.getDeltaMovement().horizontalDistanceSqr() > 0.005) {
+                    player.causeFoodExhaustion(0.005f);
+                }
+            }
+        }
+
+        // --- DragonBlood: проверка таймера извержения ---
+        if (eruptionTimers.containsKey(playerUUID)) {
+            long targetTime = eruptionTimers.get(playerUUID);
+
+            if (System.currentTimeMillis() >= targetTime) {
+                eruptionTimers.remove(playerUUID);
+
+                Level level = player.level();
+                BlockPos pos = player.blockPosition();
+
+                if (level.getBlockState(pos).isAir() || level.getBlockState(pos).liquid()) {
+                    level.setBlockAndUpdate(pos, Blocks.LAVA.defaultBlockState());
+                    LAVA_TASKS.add(new LavaTask(level, pos, 60));
+                }
+            }
+        }
+    }
+
+    // ==========================================
+    // DRAGONBLOOD: ТИК СЕРВЕРА (УДАЛЕНИЕ ЛАВЫ, ОЧИСТКА ПАМЯТИ)
+    // ==========================================
+    @SubscribeEvent
+    public static void onDragonBloodServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+
+        for (int i = LAVA_TASKS.size() - 1; i >= 0; i--) {
+            LavaTask task = LAVA_TASKS.get(i);
+            task.ticksLeft--;
+
+            if (task.ticksLeft <= 0) {
+                if (task.level.getBlockState(task.pos).is(Blocks.LAVA)) {
+                    task.level.setBlockAndUpdate(task.pos, Blocks.AIR.defaultBlockState());
+                }
+                LAVA_TASKS.remove(i);
+            }
+        }
+
+        if (event.getServer().getTickCount() % 20 == 0 && !accumulatedDamage.isEmpty()) {
+            accumulatedDamage.replaceAll((uuid, damage) -> Math.max(0.0f, damage - 0.5f));
+            accumulatedDamage.values().removeIf(damage -> damage <= 0.0f);
+        }
+    }
+
+    // ==========================================
+    // DRAGONFIREBURP: ВЫПОЛНЕНИЕ ОТРЫЖКИ
+    // ==========================================
+    private static void executeFireBurp(Player player) {
+        Level level = player.level();
+        BlockPos playerPos = player.blockPosition();
+
+        boolean shouldExplode = level.random.nextFloat() < 0.10f;
+        if (shouldExplode) {
+            level.explode(player, player.getX(), player.getY(), player.getZ(), 2.1f, Level.ExplosionInteraction.MOB);
+        }
+
+        Vec3 lookVec = player.getLookAngle();
+        int radius = 3;
+        for (int x = -radius; x <= radius; x++) {
+            for (int y = -radius; y <= radius; y++) {
+                for (int z = -radius; z <= radius; z++) {
+                    BlockPos targetPos = playerPos.offset(x, y, z);
+                    Vec3 blockVec = new Vec3(
+                            targetPos.getX() + 0.5 - player.getX(),
+                            targetPos.getY() + 0.5 - player.getEyeY(),
+                            targetPos.getZ() + 0.5 - player.getZ()
+                    );
+
+                    double distance = blockVec.length();
+                    if (distance <= 3.5) {
+                        double dotProduct = lookVec.dot(blockVec.normalize());
+                        if (dotProduct > 0.5) {
+                            if (level.isEmptyBlock(targetPos) && BaseFireBlock.canBePlacedAt(level, targetPos, Direction.DOWN)) {
+                                level.setBlockAndUpdate(targetPos, Blocks.FIRE.defaultBlockState());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        AABB area = new AABB(playerPos).inflate(3);
+        for (LivingEntity entity : level.getEntitiesOfClass(LivingEntity.class, area)) {
+            if (entity != player) {
+                Vec3 entityVec = new Vec3(entity.getX() - player.getX(), entity.getY() - player.getY(), entity.getZ() - player.getZ());
+                double dotProduct = lookVec.dot(entityVec.normalize());
+
+                if (dotProduct > 0.5) {
+                    entity.setSecondsOnFire(5);
+                }
+            }
+        }
+    }
+
+    private static class LavaTask {
+        final Level level;
+        final BlockPos pos;
+        int ticksLeft;
+
+        LavaTask(Level level, BlockPos pos, int ticksLeft) {
+            this.level = level;
+            this.pos = pos;
+            this.ticksLeft = ticksLeft;
+        }
     }
 }
