@@ -1,5 +1,5 @@
 
-package com.example.examplemod;
+package com.debili.racemod;
 
 public class Zombi implements Race {
 

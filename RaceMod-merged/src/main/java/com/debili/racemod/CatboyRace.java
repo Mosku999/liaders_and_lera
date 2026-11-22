@@ -1,4 +1,4 @@
-package com.example.examplemod;
+package com.debili.racemod;
 
 public class CatboyRace implements Race {
     @Override

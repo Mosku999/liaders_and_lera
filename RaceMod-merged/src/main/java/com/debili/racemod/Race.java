@@ -1,4 +1,4 @@
-package com.example.examplemod;
+package com.debili.racemod;
 
 import net.minecraft.world.entity.player.Player;
 

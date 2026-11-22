@@ -1,6 +1,5 @@
-package com.example.examplemod;
+package com.debili.racemod;
 
-import com.example.examplemod.ExampleMod;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.HitResult;
 import net.minecraftforge.api.distmarker.Dist;
@@ -9,7 +8,7 @@ import net.minecraftforge.client.event.RenderBlockScreenEffectEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-@Mod.EventBusSubscriber(modid = ExampleMod.MODID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
+@Mod.EventBusSubscriber(modid = RaceMod.MODID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class DragonkinClientEvents {
 
     // --- Настройка замедления взмахов ---

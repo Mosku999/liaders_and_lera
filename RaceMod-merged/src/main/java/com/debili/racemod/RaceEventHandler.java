@@ -1,4 +1,4 @@
-package com.example.examplemod;
+package com.debili.racemod;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -34,7 +34,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 
-@Mod.EventBusSubscriber(modid = ExampleMod.MODID)
+@Mod.EventBusSubscriber(modid = RaceMod.MODID)
 public class RaceEventHandler {
     // 20 игровых тиков = 1 секунда. 12 000 тиков = 10 минут (20 * 60 * 10).
     public static final int SWITCH_INTERVAL_TICKS = 12000;

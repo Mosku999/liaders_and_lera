@@ -1,4 +1,4 @@
-package com.example.examplemod;
+package com.debili.racemod;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
@@ -12,7 +12,7 @@ import net.minecraftforge.fml.common.Mod;
 
 import java.util.UUID;
 
-@Mod.EventBusSubscriber(modid = ExampleMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
+@Mod.EventBusSubscriber(modid = RaceMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class DragonFlightServerEvents {
 
     public static final String FLY_TIME_KEY = "DragonKinFlyTime";
