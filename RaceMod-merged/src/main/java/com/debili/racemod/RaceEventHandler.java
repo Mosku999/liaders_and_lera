@@ -76,6 +76,7 @@ public class RaceEventHandler {
         }
         return CATBOY;
     }
+
     // Случайный выбор следующего класса (не повторяя текущий).
     private static String nextRaceId(String currentId) {
         List<String> candidates = new ArrayList<>();
@@ -120,6 +121,8 @@ public class RaceEventHandler {
 
             if ("dragonkin".equals(previousId) && !"dragonkin".equals(nextId)) {
                 fireBurpTicks.remove(player.getUUID());
+                accumulatedDamage.remove(player.getUUID());
+                eruptionTimers.remove(player.getUUID());
                 player.getAbilities().flying = false;
                 player.getAbilities().mayfly = false;
                 player.onUpdateAbilities();
@@ -134,6 +137,7 @@ public class RaceEventHandler {
 
         Race race = getRace(data.getString("race_id"));
         handleFatRace(player, data, race);
+
         // Усиленный прыжок кошкомальчика
         if (race.getId().equals("catboy")) {
             MobEffectInstance jump = player.getEffect(MobEffects.JUMP);
@@ -181,6 +185,7 @@ public class RaceEventHandler {
                 }
             }
         }
+
         // ЛОГИКА ГОРЕНИЯ НА СОЛНЦЕ
         if (race.burnsInSunlight()) {
             if (player.level().isDay() && player.level().canSeeSky(player.blockPosition()) && !player.isInWater()) {
@@ -265,9 +270,9 @@ public class RaceEventHandler {
         Race race = getRace(player.getPersistentData().getString("race_id"));
         float multiplier = race.getMiningSpeedMultiplier();
 
-        // Замедление копания для дракона (из DragonkinSlowness)
+        // Драконид добывает так же медленно, как зомби.
         if ("dragonkin".equals(race.getId())) {
-            multiplier *= 0.65f;
+            multiplier = ZOMBI.getMiningSpeedMultiplier();
         }
 
         if (multiplier != 1.0F) {
@@ -382,7 +387,7 @@ public class RaceEventHandler {
             }
         }
 
-        // --- DragonBlood: накопление урона при получении урона драконом ---
+        // --- DragonBlood: накопление урона при получении урона драконом (включая урон от мобов) ---
         if (event.getEntity() instanceof Player player) {
             String raceId = player.getPersistentData().getString("race_id");
             if (!"dragonkin".equals(raceId)) return;
@@ -395,12 +400,14 @@ public class RaceEventHandler {
             }
 
             float currentDamage = event.getAmount();
+            if (currentDamage <= 0.0f) return;
+
             float totalDamage = accumulatedDamage.getOrDefault(playerUUID, 0.0f) + currentDamage;
 
             if (totalDamage >= DAMAGE_THRESHOLD) {
                 accumulatedDamage.put(playerUUID, 0.0f);
                 eruptionTimers.put(playerUUID, System.currentTimeMillis() + 2000);
-                player.sendSystemMessage(Component.literal("§c!Твоя кровь закипает! Лава вырвется через 2 секунды!"));
+                player.sendSystemMessage(Component.literal("!Твоя кровь закипает! Лава вырвется через 2 секунды!"));
             } else {
                 accumulatedDamage.put(playerUUID, totalDamage);
             }
@@ -415,12 +422,10 @@ public class RaceEventHandler {
         if (!(event.getEntity() instanceof Player player)) {
             return;
         }
-        // Проверяем, что игрок — дракон
         String raceId = player.getPersistentData().getString("race_id");
         if (!"dragonkin".equals(raceId)) {
             return;
         }
-        // Блокируем урон от огня и лавы
         if (event.getSource().is(DamageTypeTags.IS_FIRE)) {
             event.setCanceled(true);
         }
@@ -551,7 +556,6 @@ public class RaceEventHandler {
             this.ticksLeft = ticksLeft;
         }
     }
-
 
     private static void handleFatRace(Player player, CompoundTag data, Race race) {
         boolean isFat = "fat".equals(race.getId());
