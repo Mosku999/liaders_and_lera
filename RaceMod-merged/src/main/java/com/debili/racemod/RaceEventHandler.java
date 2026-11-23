@@ -39,7 +39,8 @@ public class RaceEventHandler {
     // 20 игровых тиков = 1 секунда. 12 000 тиков = 10 минут (20 * 60 * 10).
     public static final int SWITCH_INTERVAL_TICKS = 12000;
 
-    private static final List<String> ALL_RACE_IDS = List.of("catboy", "zombi", "dragonkin");
+    private static final List<String> ALL_RACE_IDS =
+            List.of("catboy", "zombi", "dragonkin", "fat");
     private static final Random RANDOM = new Random();
 
     private static final UUID RACE_SPEED_ID =
@@ -48,6 +49,7 @@ public class RaceEventHandler {
             UUID.fromString("6a2f5a10-8c7d-4b12-9a01-222222222222");
 
     private static final Race CATBOY = new CatboyRace();
+    private static final Race FAT = new FatRace();
     private static final Race ZOMBI = new Zombi();
     private static final Race DRAGONKIN = new DragonkinRace();
 
@@ -69,9 +71,11 @@ public class RaceEventHandler {
         if ("dragonkin".equals(id)) {
             return DRAGONKIN;
         }
+        if ("fat".equals(id)) {
+            return FAT;
+        }
         return CATBOY;
     }
-
     // Случайный выбор следующего класса (не повторяя текущий).
     private static String nextRaceId(String currentId) {
         List<String> candidates = new ArrayList<>();
@@ -129,6 +133,7 @@ public class RaceEventHandler {
         data.putInt("race_timer", timer);
 
         Race race = getRace(data.getString("race_id"));
+        handleFatRace(player, data, race);
         // Усиленный прыжок кошкомальчика
         if (race.getId().equals("catboy")) {
             MobEffectInstance jump = player.getEffect(MobEffects.JUMP);
@@ -545,5 +550,119 @@ public class RaceEventHandler {
             this.pos = pos;
             this.ticksLeft = ticksLeft;
         }
+    }
+
+
+    private static void handleFatRace(Player player, CompoundTag data, Race race) {
+        boolean isFat = "fat".equals(race.getId());
+
+        boolean wasOnGround = data.contains("fat_was_on_ground")
+                ? data.getBoolean("fat_was_on_ground")
+                : player.onGround();
+
+        boolean jumpActive = data.getBoolean("fat_jump_active");
+
+        // Перезарядка: 10 секунд
+        int cooldown = data.getInt("fat_crater_cooldown");
+
+        if (isFat && !player.isCreative() && !player.isSpectator()) {
+
+            if (cooldown > 0) {
+                cooldown--;
+                data.putInt("fat_crater_cooldown", cooldown);
+            }
+
+            // Регистрируем настоящий прыжок с земли.
+            if (wasOnGround && !player.onGround()
+                    && player.getDeltaMovement().y > 0.1D) {
+                jumpActive = true;
+            }
+
+            // Проверяем приземление после прыжка.
+            if (!wasOnGround && player.onGround() && jumpActive) {
+
+                jumpActive = false;
+                data.putBoolean("fat_jump_active", false);
+
+                if (cooldown <= 0) {
+
+                    // Запускаем перезарядку.
+                    cooldown = 200;
+                    data.putInt("fat_crater_cooldown", cooldown);
+
+                    // Создаём кратер.
+                    BlockPos center = player.blockPosition().below();
+
+                    for (int layer = 0; layer < 2; layer++) {
+                        int radiusSquared = layer == 0 ? 6 : 2;
+
+                        for (int x = -2; x <= 2; x++) {
+                            for (int z = -2; z <= 2; z++) {
+
+                                if (x * x + z * z > radiusSquared) {
+                                    continue;
+                                }
+
+                                BlockPos pos = center.offset(x, -layer, z);
+                                var state = player.level().getBlockState(pos);
+
+                                if (!state.isAir()
+                                        && !state.hasBlockEntity()
+                                        && state.getDestroySpeed(player.level(), pos) >= 0) {
+                                    player.level().destroyBlock(pos, true, player);
+                                }
+                            }
+                        }
+                    }
+
+                    // Ударная волна: радиус 6 блоков.
+                    AABB area = player.getBoundingBox().inflate(6.0D, 2.0D, 6.0D);
+
+                    for (LivingEntity entity : player.level().getEntitiesOfClass(
+                            LivingEntity.class, area)) {
+
+                        if (entity == player || !entity.isAlive()) {
+                            continue;
+                        }
+
+                        double dx = entity.getX() - player.getX();
+                        double dz = entity.getZ() - player.getZ();
+                        double distance = Math.sqrt(dx * dx + dz * dz);
+
+                        if (distance > 0.1D && distance <= 6.0D) {
+
+                            // Чем ближе моб, тем сильнее отбрасывание.
+                            double strength = 1.0D - (distance / 6.0D);
+                            double knockback = 0.8D + strength * 1.7D;
+
+                            // Урон — 3 сердца.
+                            entity.hurt(
+                                    player.damageSources().playerAttack(player),
+                                    6.0F
+                            );
+
+                            entity.push(
+                                    dx / distance * knockback,
+                                    0.35D + strength * 0.45D,
+                                    dz / distance * knockback
+                            );
+
+                            entity.hurtMarked = true;
+                        }
+                    }
+                }
+            }
+
+            // Дополнительный расход голода при движении.
+            if (player.getDeltaMovement().horizontalDistanceSqr() > 0.005D) {
+                player.causeFoodExhaustion(0.002F);
+            }
+
+        } else {
+            jumpActive = false;
+        }
+
+        data.putBoolean("fat_jump_active", jumpActive);
+        data.putBoolean("fat_was_on_ground", player.onGround());
     }
 }
